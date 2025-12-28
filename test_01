@@ -1,298 +1,300 @@
---// RedDrawUI.lua
---// Minimal Rayfield-style Drawing UI (executor-safe)
+--[[========================================
+    REDFIELD UI (Drawing API)
+    Minimal Rayfield-Compatible Test Library
+==========================================]]
 
 local UIS = game:GetService("UserInputService")
-local RS  = game:GetService("RunService")
+local RunService = game:GetService("RunService")
+local GuiService = game:GetService("GuiService")
 
-local UI = {}
+local inset = GuiService:GetGuiInset()
 
-UI.Theme = {
-    Accent = Color3.fromRGB(220, 60, 60),
-    Background = Color3.fromRGB(18, 18, 18),
-    Panel = Color3.fromRGB(32, 32, 32),
-    Text = Color3.fromRGB(240, 240, 240),
-    Muted = Color3.fromRGB(150, 150, 150)
-}
-
-local function draw(class, props)
-    local o = Drawing.new(class)
-    for k,v in pairs(props or {}) do
-        o[k] = v
-    end
-    return o
+local function mousePos()
+    local m = UIS:GetMouseLocation()
+    return Vector2.new(m.X, m.Y - inset.Y)
 end
 
--- Compatibility no-ops
-function UI:ApplyTheme(_) end
-function UI:LoadConfiguration() end
+local function inside(p, pos, size)
+    return p.X >= pos.X and p.X <= pos.X + size.X
+       and p.Y >= pos.Y and p.Y <= pos.Y + size.Y
+end
 
---// WINDOW
-function UI:CreateWindow(opts)
-    local window = {}
-    local tabs = {}
-    local activeTab
+local UI = {}
+UI.__index = UI
 
-    local pos = Vector2.new(300, 200)
-    local size = Vector2.new(480, 360)
-    local dragging, dragOffset
+-- theme
+local COLORS = {
+    bg = Color3.fromRGB(20, 20, 20),
+    panel = Color3.fromRGB(30, 30, 30),
+    red = Color3.fromRGB(200, 60, 60),
+    text = Color3.new(1,1,1),
+    dim = Color3.fromRGB(160,160,160)
+}
 
-    local bg = draw("Square", {
-        Size = size,
-        Position = pos,
-        Filled = true,
-        Color = UI.Theme.Background
-    })
+local function newText(size)
+    local t = Drawing.new("Text")
+    t.Size = size
+    t.Color = COLORS.text
+    t.Outline = true
+    t.Visible = false
+    return t
+end
 
-    local header = draw("Square", {
-        Size = Vector2.new(size.X, 42),
-        Position = pos,
-        Filled = true,
-        Color = UI.Theme.Panel
-    })
+local function newBox()
+    local s = Drawing.new("Square")
+    s.Filled = true
+    s.Visible = false
+    return s
+end
 
-    local title = draw("Text", {
-        Text = opts.Name or "UI",
-        Size = 16,
-        Color = UI.Theme.Text,
-        Outline = true,
-        Position = pos + Vector2.new(12, 11)
-    })
+--------------------------------------------------
+-- WINDOW
+--------------------------------------------------
 
-    -- Dragging
+function UI:CreateWindow(cfg)
+    local win = setmetatable({}, UI)
+
+    win.pos = Vector2.new(300, 200)
+    win.size = Vector2.new(520, 420)
+    win.drag = false
+    win.dragOff = Vector2.zero
+
+    win.tabs = {}
+    win.activeTab = nil
+
+    -- background
+    win.bg = newBox()
+    win.bg.Color = COLORS.bg
+
+    win.top = newBox()
+    win.top.Color = COLORS.red
+
+    win.title = newText(18)
+    win.title.Text = cfg.Name or "Window"
+
+    --------------------------------------------------
+
+    function win:_layout()
+        self.bg.Position = self.pos
+        self.bg.Size = self.size
+        self.bg.Visible = true
+
+        self.top.Position = self.pos
+        self.top.Size = Vector2.new(self.size.X, 30)
+        self.top.Visible = true
+
+        self.title.Position = self.pos + Vector2.new(10, 6)
+        self.title.Visible = true
+
+        local tx = self.pos.X + 10
+        local ty = self.pos.Y + 40
+
+        for _,tab in ipairs(self.tabs) do
+            tab:_layout(Vector2.new(tx, ty))
+            ty += 26
+        end
+
+        if self.activeTab then
+            self.activeTab:_layoutContent(
+                self.pos + Vector2.new(120, 40),
+                Vector2.new(self.size.X - 130, self.size.Y - 50)
+            )
+        end
+    end
+
+    --------------------------------------------------
+    -- DRAGGING
+    --------------------------------------------------
+
     UIS.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 then
-            local m = UIS:GetMouseLocation()
-            if m.X >= pos.X and m.X <= pos.X + size.X
-            and m.Y >= pos.Y and m.Y <= pos.Y + 42 then
-                dragging = true
-                dragOffset = m - pos
+            local m = mousePos()
+            if inside(m, win.pos, Vector2.new(win.size.X, 30)) then
+                win.drag = true
+                win.dragOff = m - win.pos
             end
         end
     end)
 
     UIS.InputEnded:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = false
+            win.drag = false
         end
     end)
 
-    RS.RenderStepped:Connect(function()
-        if dragging then
-            pos = UIS:GetMouseLocation() - dragOffset
-            bg.Position = pos
-            header.Position = pos
-            title.Position = pos + Vector2.new(12, 11)
-            for _,t in ipairs(tabs) do
-                t:_reposition(pos)
-            end
+    RunService.RenderStepped:Connect(function()
+        if win.drag then
+            win.pos = mousePos() - win.dragOff
         end
+        win:_layout()
     end)
 
-    --// TAB
-    function window:CreateTab(name, icon) -- icon accepted, ignored
+    --------------------------------------------------
+
+    function win:CreateTab(name, icon)
         local tab = {}
-        local elements = {}
-        local visible = false
+        tab.name = name
+        tab.icon = icon -- accepted, ignored
+        tab.elements = {}
 
-        local tabText = draw("Text", {
-            Text = name,
-            Size = 14,
-            Color = UI.Theme.Muted,
-            Outline = true
-        })
+        tab.btn = newBox()
+        tab.btn.Color = COLORS.panel
 
-        function tab:_reposition(base)
-            tabText.Position = base + Vector2.new(14 + (#tabs * 100), 52)
-            local y = base.Y + 84
-            for _,e in ipairs(elements) do
-                e:_move(base.X + 14, y)
-                y += 32
-            end
+        tab.txt = newText(16)
+        tab.txt.Text = name
+
+        function tab:_layout(pos)
+            self.btn.Position = pos
+            self.btn.Size = Vector2.new(100, 24)
+            self.btn.Visible = true
+
+            self.txt.Position = pos + Vector2.new(8, 4)
+            self.txt.Visible = true
         end
 
-        function tab:_set(state)
-            visible = state
-            tabText.Color = state and UI.Theme.Accent or UI.Theme.Muted
-            for _,e in ipairs(elements) do
-                e:_visible(state)
+        function tab:_layoutContent(pos, size)
+            local y = pos.Y
+            for _,el in ipairs(self.elements) do
+                el:_layout(Vector2.new(pos.X, y))
+                y += el.height + 8
             end
         end
 
         UIS.InputBegan:Connect(function(i)
             if i.UserInputType == Enum.UserInputType.MouseButton1 then
-                local m = UIS:GetMouseLocation()
-                local p = tabText.Position
-                if m.X >= p.X and m.X <= p.X + tabText.TextBounds.X
-                and m.Y >= p.Y and m.Y <= p.Y + 18 then
-                    if activeTab then activeTab:_set(false) end
-                    activeTab = tab
-                    tab:_set(true)
+                if inside(mousePos(), tab.btn.Position, tab.btn.Size) then
+                    win.activeTab = tab
                 end
             end
         end)
 
-        -- TOGGLE
+        --------------------------------------------------
+        -- ELEMENTS
+        --------------------------------------------------
+
         function tab:CreateToggle(cfg)
             local t = {}
-            local value = cfg.CurrentValue
+            t.height = 26
+            t.state = cfg.CurrentValue or false
 
-            local label = draw("Text", {
-                Text = cfg.Name,
-                Size = 14,
-                Color = UI.Theme.Text,
-                Outline = true
-            })
+            t.box = newBox()
+            t.box.Color = COLORS.panel
 
-            local box = draw("Square", {
-                Size = Vector2.new(16,16),
-                Filled = true
-            })
+            t.txt = newText(15)
+            t.txt.Text = cfg.Name
 
-            local function refresh()
-                box.Color = value and UI.Theme.Accent or UI.Theme.Panel
-            end
+            t.ind = newBox()
+            t.ind.Color = COLORS.red
 
-            function t:_move(x,y)
-                label.Position = Vector2.new(x,y)
-                box.Position = Vector2.new(x+260,y+2)
-                refresh()
-            end
+            function t:_layout(pos)
+                self.box.Position = pos
+                self.box.Size = Vector2.new(240, 24)
+                self.box.Visible = true
 
-            function t:_visible(v)
-                label.Visible = v
-                box.Visible = v
+                self.txt.Position = pos + Vector2.new(8, 4)
+                self.txt.Visible = true
+
+                self.ind.Position = pos + Vector2.new(220, 4)
+                self.ind.Size = Vector2.new(16, 16)
+                self.ind.Visible = self.state
             end
 
             UIS.InputBegan:Connect(function(i)
-                if visible and i.UserInputType == Enum.UserInputType.MouseButton1 then
-                    local m = UIS:GetMouseLocation()
-                    if m.X >= box.Position.X and m.X <= box.Position.X+16
-                    and m.Y >= box.Position.Y and m.Y <= box.Position.Y+16 then
-                        value = not value
-                        refresh()
-                        cfg.Callback(value)
+                if i.UserInputType == Enum.UserInputType.MouseButton1 then
+                    if inside(mousePos(), t.box.Position, t.box.Size) then
+                        t.state = not t.state
+                        t.ind.Visible = t.state
+                        cfg.Callback(t.state)
                     end
                 end
             end)
 
-            table.insert(elements, t)
+            table.insert(tab.elements, t)
         end
 
-        -- SLIDER
         function tab:CreateSlider(cfg)
             local s = {}
-            local min,max = cfg.Range[1], cfg.Range[2]
-            local value = cfg.CurrentValue
+            s.height = 36
+            s.val = cfg.CurrentValue or cfg.Range[1]
 
-            local label = draw("Text", {
-                Text = cfg.Name .. ": " .. value,
-                Size = 14,
-                Color = UI.Theme.Text,
-                Outline = true
-            })
+            s.box = newBox()
+            s.box.Color = COLORS.panel
 
-            local bar = draw("Square", {
-                Size = Vector2.new(200,6),
-                Filled = true,
-                Color = UI.Theme.Panel
-            })
+            s.fill = newBox()
+            s.fill.Color = COLORS.red
 
-            function s:_move(x,y)
-                label.Position = Vector2.new(x,y)
-                bar.Position = Vector2.new(x,y+18)
-            end
+            s.txt = newText(15)
 
-            function s:_visible(v)
-                label.Visible = v
-                bar.Visible = v
+            function s:_layout(pos)
+                self.box.Position = pos
+                self.box.Size = Vector2.new(240, 10)
+                self.box.Visible = true
+
+                local pct = (self.val - cfg.Range[1]) / (cfg.Range[2] - cfg.Range[1])
+                self.fill.Position = pos
+                self.fill.Size = Vector2.new(240 * pct, 10)
+                self.fill.Visible = true
+
+                self.txt.Text = cfg.Name .. ": " .. math.floor(self.val)
+                self.txt.Position = pos + Vector2.new(0, -16)
+                self.txt.Visible = true
             end
 
             UIS.InputBegan:Connect(function(i)
-                if visible and i.UserInputType == Enum.UserInputType.MouseButton1 then
-                    local m = UIS:GetMouseLocation()
-                    local p = bar.Position
-                    if m.X >= p.X and m.X <= p.X+bar.Size.X
-                    and m.Y >= p.Y and m.Y <= p.Y+bar.Size.Y then
-                        local pct = (m.X - p.X)/bar.Size.X
-                        value = math.floor(min + (max-min)*pct)
-                        label.Text = cfg.Name .. ": " .. value
-                        cfg.Callback(value)
+                if i.UserInputType == Enum.UserInputType.MouseButton1 then
+                    local m = mousePos()
+                    if inside(m, s.box.Position, s.box.Size) then
+                        local pct = math.clamp((m.X - s.box.Position.X) / 240, 0, 1)
+                        s.val = cfg.Range[1] + pct * (cfg.Range[2] - cfg.Range[1])
+                        cfg.Callback(s.val)
                     end
                 end
             end)
 
-            table.insert(elements, s)
+            table.insert(tab.elements, s)
         end
 
-        -- DROPDOWN (click-to-cycle)
         function tab:CreateDropdown(cfg)
             local d = {}
-            local index = table.find(cfg.Options, cfg.CurrentOption[1]) or 1
+            d.height = 26
+            d.sel = cfg.CurrentOption[1]
 
-            local label = draw("Text", {
-                Text = cfg.Name .. ": " .. cfg.Options[index],
-                Size = 14,
-                Color = UI.Theme.Text,
-                Outline = true
-            })
+            d.box = newBox()
+            d.box.Color = COLORS.panel
 
-            function d:_move(x,y)
-                label.Position = Vector2.new(x,y)
-            end
+            d.txt = newText(15)
 
-            function d:_visible(v)
-                label.Visible = v
+            function d:_layout(pos)
+                self.box.Position = pos
+                self.box.Size = Vector2.new(240, 24)
+                self.box.Visible = true
+
+                self.txt.Text = cfg.Name .. ": " .. tostring(d.sel)
+                self.txt.Position = pos + Vector2.new(8, 4)
+                self.txt.Visible = true
             end
 
             UIS.InputBegan:Connect(function(i)
-                if visible and i.UserInputType == Enum.UserInputType.MouseButton1 then
-                    local m = UIS:GetMouseLocation()
-                    local p = label.Position
-                    if m.X >= p.X and m.X <= p.X+label.TextBounds.X
-                    and m.Y >= p.Y and m.Y <= p.Y+18 then
-                        index = index % #cfg.Options + 1
-                        label.Text = cfg.Name .. ": " .. cfg.Options[index]
-                        cfg.Callback(cfg.Options[index])
+                if i.UserInputType == Enum.UserInputType.MouseButton1 then
+                    if inside(mousePos(), d.box.Position, d.box.Size) then
+                        d.sel = cfg.Options[1]
+                        cfg.Callback(d.sel)
                     end
                 end
             end)
 
-            table.insert(elements, d)
-            return { Refresh=function() end, Set=function() end }
+            table.insert(tab.elements, d)
         end
 
-        -- COLOR PICKER (simple)
-        function tab:CreateColorPicker(cfg)
-            local c = {}
-
-            local label = draw("Text", {
-                Text = cfg.Name,
-                Size = 14,
-                Color = cfg.Color,
-                Outline = true
-            })
-
-            function c:_move(x,y)
-                label.Position = Vector2.new(x,y)
-            end
-
-            function c:_visible(v)
-                label.Visible = v
-            end
-
-            table.insert(elements, c)
-        end
-
-        table.insert(tabs, tab)
-        if not activeTab then
-            activeTab = tab
-            tab:_set(true)
+        table.insert(win.tabs, tab)
+        if not win.activeTab then
+            win.activeTab = tab
         end
 
         return tab
     end
 
-    return window
+    return win
 end
 
 return UI
