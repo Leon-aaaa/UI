@@ -1,12 +1,16 @@
 --========================================
--- REDFIELD UI (FINAL, CORRECTED)
+-- REDFIELD UI (FINAL, OFFSET FIXED)
 --========================================
 
 local UIS = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local GuiService = game:GetService("GuiService")
 
+-- Correct mouse position for Drawing API
+local inset = GuiService:GetGuiInset()
 local function mousePos()
-    return UIS:GetMouseLocation()
+    local pos = UIS:GetMouseLocation()
+    return Vector2.new(pos.X - inset.X, pos.Y - inset.Y)
 end
 
 local function inside(p, pos, size)
@@ -124,7 +128,7 @@ function UI:CreateWindow(cfg)
     function win:CreateTab(name, icon)
         local tab = {}
         tab.name = name
-        tab.icon = icon -- accepted, ignored
+        tab.icon = icon
         tab.elements = {}
 
         tab.btn = Box()
