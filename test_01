@@ -1,7 +1,6 @@
---[[========================================
-    REDFIELD UI (Drawing API)
-    Minimal Rayfield-Compatible Test Library
-==========================================]]
+--========================================
+-- REDFIELD UI (FIXED DRAWING VERSION)
+--========================================
 
 local UIS = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -19,60 +18,57 @@ local function inside(p, pos, size)
        and p.Y >= pos.Y and p.Y <= pos.Y + size.Y
 end
 
-local UI = {}
-UI.__index = UI
-
--- theme
+-- Theme
 local COLORS = {
-    bg = Color3.fromRGB(20, 20, 20),
-    panel = Color3.fromRGB(30, 30, 30),
-    red = Color3.fromRGB(200, 60, 60),
-    text = Color3.new(1,1,1),
-    dim = Color3.fromRGB(160,160,160)
+    bg    = Color3.fromRGB(18,18,18),
+    panel = Color3.fromRGB(32,32,32),
+    red   = Color3.fromRGB(200,60,60),
+    text  = Color3.fromRGB(255,255,255),
+    dim   = Color3.fromRGB(160,160,160)
 }
 
-local function newText(size)
-    local t = Drawing.new("Text")
-    t.Size = size
-    t.Color = COLORS.text
-    t.Outline = true
-    t.Visible = false
-    return t
-end
-
-local function newBox()
+local function Box()
     local s = Drawing.new("Square")
     s.Filled = true
     s.Visible = false
     return s
 end
 
---------------------------------------------------
+local function Text(size)
+    local t = Drawing.new("Text")
+    t.Size = size
+    t.Outline = true
+    t.Visible = false
+    return t
+end
+
+local UI = {}
+UI.__index = UI
+
+--==================================================
 -- WINDOW
---------------------------------------------------
+--==================================================
 
 function UI:CreateWindow(cfg)
     local win = setmetatable({}, UI)
 
-    win.pos = Vector2.new(300, 200)
-    win.size = Vector2.new(520, 420)
-    win.drag = false
-    win.dragOff = Vector2.zero
+    win.pos  = Vector2.new(300,200)
+    win.size = Vector2.new(520,420)
+
+    win.dragging = false
+    win.dragOff  = Vector2.zero
 
     win.tabs = {}
     win.activeTab = nil
 
-    -- background
-    win.bg = newBox()
+    win.bg = Box()
     win.bg.Color = COLORS.bg
 
-    win.top = newBox()
+    win.top = Box()
     win.top.Color = COLORS.red
 
-    win.title = newText(18)
+    win.title = Text(18)
     win.title.Text = cfg.Name or "Window"
-
-    --------------------------------------------------
 
     function win:_layout()
         self.bg.Position = self.pos
@@ -83,34 +79,30 @@ function UI:CreateWindow(cfg)
         self.top.Size = Vector2.new(self.size.X, 30)
         self.top.Visible = true
 
-        self.title.Position = self.pos + Vector2.new(10, 6)
+        self.title.Position = self.pos + Vector2.new(10,6)
         self.title.Visible = true
 
         local tx = self.pos.X + 10
         local ty = self.pos.Y + 40
 
         for _,tab in ipairs(self.tabs) do
-            tab:_layout(Vector2.new(tx, ty))
-            ty += 26
+            tab:_layoutTab(Vector2.new(tx, ty))
+            ty += 28
         end
 
         if self.activeTab then
             self.activeTab:_layoutContent(
-                self.pos + Vector2.new(120, 40),
-                Vector2.new(self.size.X - 130, self.size.Y - 50)
+                self.pos + Vector2.new(130, 40)
             )
         end
     end
 
-    --------------------------------------------------
-    -- DRAGGING
-    --------------------------------------------------
-
+    -- Dragging
     UIS.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 then
             local m = mousePos()
             if inside(m, win.pos, Vector2.new(win.size.X, 30)) then
-                win.drag = true
+                win.dragging = true
                 win.dragOff = m - win.pos
             end
         end
@@ -118,18 +110,20 @@ function UI:CreateWindow(cfg)
 
     UIS.InputEnded:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 then
-            win.drag = false
+            win.dragging = false
         end
     end)
 
     RunService.RenderStepped:Connect(function()
-        if win.drag then
+        if win.dragging then
             win.pos = mousePos() - win.dragOff
+            win:_layout()
         end
-        win:_layout()
     end)
 
-    --------------------------------------------------
+    --==================================================
+    -- TAB
+    --==================================================
 
     function win:CreateTab(name, icon)
         local tab = {}
@@ -137,26 +131,27 @@ function UI:CreateWindow(cfg)
         tab.icon = icon -- accepted, ignored
         tab.elements = {}
 
-        tab.btn = newBox()
+        tab.btn = Box()
         tab.btn.Color = COLORS.panel
 
-        tab.txt = newText(16)
+        tab.txt = Text(16)
         tab.txt.Text = name
 
-        function tab:_layout(pos)
+        function tab:_layoutTab(pos)
             self.btn.Position = pos
-            self.btn.Size = Vector2.new(100, 24)
+            self.btn.Size = Vector2.new(110, 26)
             self.btn.Visible = true
 
-            self.txt.Position = pos + Vector2.new(8, 4)
+            self.txt.Position = pos + Vector2.new(8,5)
+            self.txt.Color = (win.activeTab == self) and COLORS.red or COLORS.text
             self.txt.Visible = true
         end
 
-        function tab:_layoutContent(pos, size)
+        function tab:_layoutContent(pos)
             local y = pos.Y
             for _,el in ipairs(self.elements) do
                 el:_layout(Vector2.new(pos.X, y))
-                y += el.height + 8
+                y += el.height + 10
             end
         end
 
@@ -164,38 +159,39 @@ function UI:CreateWindow(cfg)
             if i.UserInputType == Enum.UserInputType.MouseButton1 then
                 if inside(mousePos(), tab.btn.Position, tab.btn.Size) then
                     win.activeTab = tab
+                    win:_layout()
                 end
             end
         end)
 
-        --------------------------------------------------
-        -- ELEMENTS
-        --------------------------------------------------
+        --==============================
+        -- TOGGLE
+        --==============================
 
         function tab:CreateToggle(cfg)
             local t = {}
             t.height = 26
             t.state = cfg.CurrentValue or false
 
-            t.box = newBox()
+            t.box = Box()
             t.box.Color = COLORS.panel
 
-            t.txt = newText(15)
+            t.txt = Text(15)
             t.txt.Text = cfg.Name
 
-            t.ind = newBox()
+            t.ind = Box()
             t.ind.Color = COLORS.red
 
             function t:_layout(pos)
                 self.box.Position = pos
-                self.box.Size = Vector2.new(240, 24)
+                self.box.Size = Vector2.new(260, 26)
                 self.box.Visible = true
 
-                self.txt.Position = pos + Vector2.new(8, 4)
+                self.txt.Position = pos + Vector2.new(8,5)
                 self.txt.Visible = true
 
-                self.ind.Position = pos + Vector2.new(220, 4)
-                self.ind.Size = Vector2.new(16, 16)
+                self.ind.Position = pos + Vector2.new(236,5)
+                self.ind.Size = Vector2.new(16,16)
                 self.ind.Visible = self.state
             end
 
@@ -210,67 +206,78 @@ function UI:CreateWindow(cfg)
             end)
 
             table.insert(tab.elements, t)
+            win:_layout()
         end
+
+        --==============================
+        -- SLIDER
+        --==============================
 
         function tab:CreateSlider(cfg)
             local s = {}
             s.height = 36
             s.val = cfg.CurrentValue or cfg.Range[1]
 
-            s.box = newBox()
-            s.box.Color = COLORS.panel
+            s.bar = Box()
+            s.bar.Color = COLORS.panel
 
-            s.fill = newBox()
+            s.fill = Box()
             s.fill.Color = COLORS.red
 
-            s.txt = newText(15)
+            s.txt = Text(15)
 
             function s:_layout(pos)
-                self.box.Position = pos
-                self.box.Size = Vector2.new(240, 10)
-                self.box.Visible = true
+                self.txt.Text = cfg.Name .. ": " .. math.floor(self.val)
+                self.txt.Position = pos + Vector2.new(0,-16)
+                self.txt.Visible = true
+
+                self.bar.Position = pos
+                self.bar.Size = Vector2.new(260, 10)
+                self.bar.Visible = true
 
                 local pct = (self.val - cfg.Range[1]) / (cfg.Range[2] - cfg.Range[1])
                 self.fill.Position = pos
-                self.fill.Size = Vector2.new(240 * pct, 10)
+                self.fill.Size = Vector2.new(260 * pct, 10)
                 self.fill.Visible = true
-
-                self.txt.Text = cfg.Name .. ": " .. math.floor(self.val)
-                self.txt.Position = pos + Vector2.new(0, -16)
-                self.txt.Visible = true
             end
 
             UIS.InputBegan:Connect(function(i)
                 if i.UserInputType == Enum.UserInputType.MouseButton1 then
                     local m = mousePos()
-                    if inside(m, s.box.Position, s.box.Size) then
-                        local pct = math.clamp((m.X - s.box.Position.X) / 240, 0, 1)
+                    if inside(m, s.bar.Position, s.bar.Size) then
+                        local pct = math.clamp((m.X - s.bar.Position.X) / 260, 0, 1)
                         s.val = cfg.Range[1] + pct * (cfg.Range[2] - cfg.Range[1])
                         cfg.Callback(s.val)
+                        win:_layout()
                     end
                 end
             end)
 
             table.insert(tab.elements, s)
+            win:_layout()
         end
+
+        --==============================
+        -- DROPDOWN (single-click)
+        --==============================
 
         function tab:CreateDropdown(cfg)
             local d = {}
-            d.height = 26
+            d.height = 30
             d.sel = cfg.CurrentOption[1]
 
-            d.box = newBox()
+            d.box = Box()
             d.box.Color = COLORS.panel
 
-            d.txt = newText(15)
+            d.txt = Text(15)
 
             function d:_layout(pos)
                 self.box.Position = pos
-                self.box.Size = Vector2.new(240, 24)
+                self.box.Size = Vector2.new(260, 30)
                 self.box.Visible = true
 
                 self.txt.Text = cfg.Name .. ": " .. tostring(d.sel)
-                self.txt.Position = pos + Vector2.new(8, 4)
+                self.txt.Position = pos + Vector2.new(8,7)
                 self.txt.Visible = true
             end
 
@@ -279,21 +286,23 @@ function UI:CreateWindow(cfg)
                     if inside(mousePos(), d.box.Position, d.box.Size) then
                         d.sel = cfg.Options[1]
                         cfg.Callback(d.sel)
+                        win:_layout()
                     end
                 end
             end)
 
             table.insert(tab.elements, d)
+            win:_layout()
         end
 
         table.insert(win.tabs, tab)
-        if not win.activeTab then
-            win.activeTab = tab
-        end
+        if not win.activeTab then win.activeTab = tab end
+        win:_layout()
 
         return tab
     end
 
+    win:_layout()
     return win
 end
 
