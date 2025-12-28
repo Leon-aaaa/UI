@@ -1,16 +1,12 @@
 --========================================
--- REDFIELD UI (FIXED DRAWING VERSION)
+-- REDFIELD UI (FINAL, CORRECTED)
 --========================================
 
 local UIS = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
-local GuiService = game:GetService("GuiService")
-
-local inset = GuiService:GetGuiInset()
 
 local function mousePos()
-    local m = UIS:GetMouseLocation()
-    return Vector2.new(m.X, m.Y - inset.Y)
+    return UIS:GetMouseLocation()
 end
 
 local function inside(p, pos, size)
@@ -22,9 +18,8 @@ end
 local COLORS = {
     bg    = Color3.fromRGB(18,18,18),
     panel = Color3.fromRGB(32,32,32),
-    red   = Color3.fromRGB(200,60,60),
+    red   = Color3.fromRGB(220,60,60),
     text  = Color3.fromRGB(255,255,255),
-    dim   = Color3.fromRGB(160,160,160)
 }
 
 local function Box()
@@ -38,6 +33,7 @@ local function Text(size)
     local t = Drawing.new("Text")
     t.Size = size
     t.Outline = true
+    t.Color = COLORS.text
     t.Visible = false
     return t
 end
@@ -87,12 +83,12 @@ function UI:CreateWindow(cfg)
 
         for _,tab in ipairs(self.tabs) do
             tab:_layoutTab(Vector2.new(tx, ty))
-            ty += 28
+            ty += 30
         end
 
         if self.activeTab then
             self.activeTab:_layoutContent(
-                self.pos + Vector2.new(130, 40)
+                self.pos + Vector2.new(140, 40)
             )
         end
     end
@@ -139,7 +135,7 @@ function UI:CreateWindow(cfg)
 
         function tab:_layoutTab(pos)
             self.btn.Position = pos
-            self.btn.Size = Vector2.new(110, 26)
+            self.btn.Size = Vector2.new(120, 26)
             self.btn.Visible = true
 
             self.txt.Position = pos + Vector2.new(8,5)
@@ -170,7 +166,7 @@ function UI:CreateWindow(cfg)
 
         function tab:CreateToggle(cfg)
             local t = {}
-            t.height = 26
+            t.height = 28
             t.state = cfg.CurrentValue or false
 
             t.box = Box()
@@ -184,13 +180,13 @@ function UI:CreateWindow(cfg)
 
             function t:_layout(pos)
                 self.box.Position = pos
-                self.box.Size = Vector2.new(260, 26)
+                self.box.Size = Vector2.new(280, 28)
                 self.box.Visible = true
 
-                self.txt.Position = pos + Vector2.new(8,5)
+                self.txt.Position = pos + Vector2.new(8,6)
                 self.txt.Visible = true
 
-                self.ind.Position = pos + Vector2.new(236,5)
+                self.ind.Position = pos + Vector2.new(252,6)
                 self.ind.Size = Vector2.new(16,16)
                 self.ind.Visible = self.state
             end
@@ -215,7 +211,7 @@ function UI:CreateWindow(cfg)
 
         function tab:CreateSlider(cfg)
             local s = {}
-            s.height = 36
+            s.height = 38
             s.val = cfg.CurrentValue or cfg.Range[1]
 
             s.bar = Box()
@@ -232,12 +228,12 @@ function UI:CreateWindow(cfg)
                 self.txt.Visible = true
 
                 self.bar.Position = pos
-                self.bar.Size = Vector2.new(260, 10)
+                self.bar.Size = Vector2.new(280, 10)
                 self.bar.Visible = true
 
                 local pct = (self.val - cfg.Range[1]) / (cfg.Range[2] - cfg.Range[1])
                 self.fill.Position = pos
-                self.fill.Size = Vector2.new(260 * pct, 10)
+                self.fill.Size = Vector2.new(280 * pct, 10)
                 self.fill.Visible = true
             end
 
@@ -245,7 +241,7 @@ function UI:CreateWindow(cfg)
                 if i.UserInputType == Enum.UserInputType.MouseButton1 then
                     local m = mousePos()
                     if inside(m, s.bar.Position, s.bar.Size) then
-                        local pct = math.clamp((m.X - s.bar.Position.X) / 260, 0, 1)
+                        local pct = math.clamp((m.X - s.bar.Position.X) / 280, 0, 1)
                         s.val = cfg.Range[1] + pct * (cfg.Range[2] - cfg.Range[1])
                         cfg.Callback(s.val)
                         win:_layout()
@@ -258,12 +254,12 @@ function UI:CreateWindow(cfg)
         end
 
         --==============================
-        -- DROPDOWN (single-click)
+        -- DROPDOWN
         --==============================
 
         function tab:CreateDropdown(cfg)
             local d = {}
-            d.height = 30
+            d.height = 32
             d.sel = cfg.CurrentOption[1]
 
             d.box = Box()
@@ -273,11 +269,11 @@ function UI:CreateWindow(cfg)
 
             function d:_layout(pos)
                 self.box.Position = pos
-                self.box.Size = Vector2.new(260, 30)
+                self.box.Size = Vector2.new(280, 32)
                 self.box.Visible = true
 
                 self.txt.Text = cfg.Name .. ": " .. tostring(d.sel)
-                self.txt.Position = pos + Vector2.new(8,7)
+                self.txt.Position = pos + Vector2.new(8,8)
                 self.txt.Visible = true
             end
 
